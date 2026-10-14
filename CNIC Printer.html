@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CNIC Print Automator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        :root {
+            /* Standard CR80 ID Card Dimensions */
+            --card-width: 85.6mm;
+            --card-height: 54mm;
+            /* A4 Page Dimensions */
+            --a4-width: 210mm;
+            --a4-height: 297mm;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+
+        /* A4 Page Styling for Screen */
+        .a4-page {
+            width: var(--a4-width);
+            height: var(--a4-height);
+            background-color: white;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+            margin: 0 auto;
+            padding: 15mm;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            grid-template-rows: repeat(4, 1fr);
+            gap: 10mm;
+            align-items: center;
+            justify-items: center;
+        }
+
+        /* Card Placeholder Styling */
+        .card-container {
+            width: var(--card-width);
+            height: var(--card-height);
+            border: 1px solid #000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background-color: #f9fafb;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .card-container img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain; /* Full image visible before zoom */
+            display: none;
+            transform-origin: center;
+        }
+
+        .card-container .placeholder-text {
+            color: #9ca3af;
+            font-size: 0.875rem;
+            text-align: center;
+            padding: 0.5rem;
+        }
+
+        /* Hide borders class */
+        body.hide-borders .card-container {
+            border-color: transparent;
+            background-color: transparent;
+        }
+
+        /* Drag and Drop Zone */
+        .drop-zone {
+            border: 2px dashed #cbd5e1;
+            transition: all 0.2s ease-in-out;
+        }
+        .drop-zone.dragover {
+            border-color: #3b82f6;
+            background-color: #eff6ff;
+        }
+
+        /* Custom Range Slider Styling */
+        input[type=range] {
+            height: 4px;
+            border-radius: 2px;
+        }
+
+        @media print {
+            @page {
+                size: A4 portrait;
+                margin: 0;
+            }
+            body, html {
+                margin: 0;
+                padding: 0;
+                background-color: white;
+            }
+            .no-print {
+                display: none !important;
+            }
+            .print-area-wrapper {
+                padding: 0 !important;
+                margin: 0 !important;
+                display: block !important;
+                overflow: visible !important;
+            }
+            .a4-page {
+                box-shadow: none;
+                margin: 0;
+                padding-top: 15mm;
+                padding-bottom: 15mm;
+                width: 100%;
+                height: 100%;
+                page-break-after: avoid;
+            }
+        }
+    </style>
+</head>
+<body class="flex h-screen overflow-hidden bg-gray-200">
+
+    <!-- Sidebar Controls (Left) -->
+    <aside class="no-print w-96 bg-white border-r border-gray-300 shadow-md h-full flex flex-col flex-shrink-0 z-10">
+        <div class="p-6 border-b border-gray-100">
+            <h1 class="text-2xl font-bold text-gray-800">CNIC Printer</h1>
+            <p class="text-sm text-gray-500 mt-1">Upload and adjust your ID cards.</p>
+        </div>
+
+        <div class="flex-1 overflow-y-auto p-6 space-y-8">
+            
+            <!-- FRONT IMAGE SECTION -->
+            <div>
+                <div class="flex justify-between items-end mb-2">
+                    <label class="block text-sm font-bold text-gray-700">1. CNIC Front</label>
+                    <button id="clear-front" class="hidden text-xs text-red-500 hover:text-red-700 font-medium">Remove</button>
+                </div>
+                
+                <div id="drop-front" class="drop-zone rounded-lg p-4 flex flex-col items-center justify-center cursor-pointer hover:bg-gray-50 mb-4" onclick="document.getElementById('file-front').click()">
+                    <svg class="w-6 h-6 text-gray-400 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+                    <span class="text-sm text-gray-600 font-medium drop-text">Click or drag image</span>
+                    <input type="file" id="file-front" class="hidden" accept="image/*">
+                </div>
+
+                <div id="controls-front" class="hidden space-y-4 bg-gray-50 p-4 rounded-lg border border-gray-200">
+                    <!-- Standard Rotate -->
+                    <div>
+                        <label class="flex justify-between text-xs font-medium text-gray-600 mb-1">
+                            <span>Rotate (90°)</span><span id="front-rotate-val">0°</span>
+                        </label>
+                        <input type="range" id="front-rotate" min="0" max="270" step="90" value="0" class="w-full accent-blue-600">
+                    </div>
+                    <!-- Fine Rotate -->
+                    <div>
+                        <label class="flex justify-between text-xs font-medium text-gray-600 mb-1">
+                            <span>Fine Adjust Angle</span><span id="front-fine-rotate-val">0°</span>
+                        </label>
+                        <input type="range" id="front-fine-rotate" min="-45" max="45" step="1" value="0" class="w-full accent-blue-500">
+                    </div>
+                    <!-- Zoom -->
+                    <div>
+                        <label class="flex justify-between text-xs font-medium text-gray-600 mb-1">
+                            <span>Zoom</span><span id="front-zoom-val">1x</span>
+                        </label>
+                        <input type="range" id="front-zoom" min="0.5" max="3" step="0.02" value="1" class="w-full accent-blue-600">
+                    </div>
+                    <!-- Position X -->
+                    <div>
+                        <label class="flex justify-between text-xs font-medium text-gray-600 mb-1">
+                            <span>Position X</span><span id="front-x-val">0px</span>
+                        </label>
+                        <input type="range" id="front-x" min="-200" max="200" step="1" value="0" class="w-full accent-blue-600">
+                    </div>
+                    <!-- Position Y -->
+                    <div>
+                        <label class="flex justify-between text-xs font-medium text-gray-600 mb-1">
+                            <span>Position Y</span><span id="front-y-val">0px</span>
+                        </label>
+                        <input type="range" id="front-y" min="-200" max="200" step="1" value="0" class="w-full accent-blue-600">
+                    </div>
+                    <div class="border-t border-gray-200 pt-3 mt-3"></div>
+                    <!-- Brightness -->
+                    <div>
+                        <label class="flex justify-between text-xs font-medium text-gray-600 mb-1">
+                            <span>Brightness</span><span id="front-bright-val">100%</span>
+                        </label>
+                        <input type="range" id="front-bright" min="50" max="200" step="1" value="100" class="w-full accent-indigo-500">
+                    </div>
+                    <!-- Contrast -->
+                    <div>
+                        <label class="flex justify-between text-xs font-medium text-gray-600 mb-1">
+                            <span>Contrast</span><span id="front-contrast-val">100%</span>
+                        </label>
+                        <input type="range" id="front-contrast" min="50" max="200" step="1" value="100" class="w-full accent-indigo-500">
+                    </div>
+                    <!-- Saturation -->
+                    <div>
+                        <label class="flex justify-between text-xs font-medium text-gray-600 mb-1">
+                            <span>Saturation</span><span id="front-saturate-val">100%</span>
+                        </label>
+                        <input type="range" id="front-saturate" min="0" max="200" step="1" value="100" class="w-full accent-indigo-500">
+                    </div>
+                </div>
+            </div>
+
+            <!-- BACK IMAGE SECTION -->
+            <div class="border-t border-gray-200 pt-8">
+                <div class="flex justify-between items-end mb-2">
+                    <label class="block text-sm font-bold text-gray-700">2. CNIC Back</label>
+                    <button id="clear-back" class="hidden text-xs text-red-500 hover:text-red-700 font-medium">Remove</button>
+                </div>
+                
+                <div id="drop-back" class="drop-zone rounded-lg p-4 flex flex-col items-center justify-center cursor-pointer hover:bg-gray-50 mb-4" onclick="document.getElementById('file-back').click()">
+                    <svg class="w-6 h-6 text-gray-400 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+                    <span class="text-sm text-gray-600 font-medium drop-text">Click or drag image</span>
+                    <input type="file" id="file-back" class="hidden" accept="image/*">
+                </div>
+
+                <div id="controls-back" class="hidden space-y-4 bg-gray-50 p-4 rounded-lg border border-gray-200">
+                    <!-- Standard Rotate -->
+                    <div>
+                        <label class="flex justify-between text-xs font-medium text-gray-600 mb-1">
+                            <span>Rotate (90°)</span><span id="back-rotate-val">0°</span>
+                        </label>
+                        <input type="range" id="back-rotate" min="0" max="270" step="90" value="0" class="w-full accent-blue-600">
+                    </div>
+                    <!-- Fine Rotate -->
+                    <div>
+                        <label class="flex justify-between text-xs font-medium text-gray-600 mb-1">
+                            <span>Fine Adjust Angle</span><span id="back-fine-rotate-val">0°</span>
+                        </label>
+                        <input type="range" id="back-fine-rotate" min="-45" max="45" step="1" value="0" class="w-full accent-blue-500">
+                    </div>
+                    <!-- Zoom -->
+                    <div>
+                        <label class="flex justify-between text-xs font-medium text-gray-600 mb-1">
+                            <span>Zoom</span><span id="back-zoom-val">1x</span>
+                        </label>
+                        <input type="range" id="back-zoom" min="0.5" max="3" step="0.02" value="1" class="w-full accent-blue-600">
+                    </div>
+                    <!-- Position X -->
+                    <div>
+                        <label class="flex justify-between text-xs font-medium text-gray-600 mb-1">
+                            <span>Position X</span><span id="back-x-val">0px</span>
+                        </label>
+                        <input type="range" id="back-x" min="-200" max="200" step="1" value="0" class="w-full accent-blue-600">
+                    </div>
+                    <!-- Position Y -->
+                    <div>
+                        <label class="flex justify-between text-xs font-medium text-gray-600 mb-1">
+                            <span>Position Y</span><span id="back-y-val">0px</span>
+                        </label>
+                        <input type="range" id="back-y" min="-200" max="200" step="1" value="0" class="w-full accent-blue-600">
+                    </div>
+                    <div class="border-t border-gray-200 pt-3 mt-3"></div>
+                    <!-- Brightness -->
+                    <div>
+                        <label class="flex justify-between text-xs font-medium text-gray-600 mb-1">
+                            <span>Brightness</span><span id="back-bright-val">100%</span>
+                        </label>
+                        <input type="range" id="back-bright" min="50" max="200" step="1" value="100" class="w-full accent-indigo-500">
+                    </div>
+                    <!-- Contrast -->
+                    <div>
+                        <label class="flex justify-between text-xs font-medium text-gray-600 mb-1">
+                            <span>Contrast</span><span id="back-contrast-val">100%</span>
+                        </label>
+                        <input type="range" id="back-contrast" min="50" max="200" step="1" value="100" class="w-full accent-indigo-500">
+                    </div>
+                    <!-- Saturation -->
+                    <div>
+                        <label class="flex justify-between text-xs font-medium text-gray-600 mb-1">
+                            <span>Saturation</span><span id="back-saturate-val">100%</span>
+                        </label>
+                        <input type="range" id="back-saturate" min="0" max="200" step="1" value="100" class="w-full accent-indigo-500">
+                    </div>
+                </div>
+            </div>
+            
+        </div>
+
+        <!-- Footer Actions -->
+        <div class="p-6 border-t border-gray-100 bg-gray-50">
+            <label class="flex items-center space-x-2 mb-4 cursor-pointer">
+                <input type="checkbox" id="toggle-borders" class="w-4 h-4 text-blue-600 rounded border-gray-300">
+                <span class="text-sm font-medium text-gray-700">Hide outline blocks before print</span>
+            </label>
+            <button onclick="window.print()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg shadow-sm transition-colors flex items-center justify-center gap-2">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path></svg>
+                Print Document
+            </button>
+        </div>
+    </aside>
+
+    <!-- Main Content Area (Right) -->
+    <main class="print-area-wrapper flex-1 h-full overflow-y-auto flex items-start justify-center p-10">
+        
+        <div class="a4-page relative">
+            
+            <!-- Row 1 -->
+            <div class="card-container">
+                <span class="placeholder-text front-placeholder">CNIC Front</span>
+                <img src="" class="front-img" alt="CNIC Front">
+            </div>
+            <div class="card-container">
+                <span class="placeholder-text back-placeholder">CNIC Back</span>
+                <img src="" class="back-img" alt="CNIC Back">
+            </div>
+
+            <!-- Row 2 -->
+            <div class="card-container">
+                <span class="placeholder-text front-placeholder">CNIC Front</span>
+                <img src="" class="front-img" alt="CNIC Front">
+            </div>
+            <div class="card-container">
+                <span class="placeholder-text back-placeholder">CNIC Back</span>
+                <img src="" class="back-img" alt="CNIC Back">
+            </div>
+
+            <!-- Row 3 -->
+            <div class="card-container">
+                <span class="placeholder-text front-placeholder">CNIC Front</span>
+                <img src="" class="front-img" alt="CNIC Front">
+            </div>
+            <div class="card-container">
+                <span class="placeholder-text back-placeholder">CNIC Back</span>
+                <img src="" class="back-img" alt="CNIC Back">
+            </div>
+
+            <!-- Row 4 -->
+            <div class="card-container">
+                <span class="placeholder-text front-placeholder">CNIC Front</span>
+                <img src="" class="front-img" alt="CNIC Front">
+            </div>
+            <div class="card-container">
+                <span class="placeholder-text back-placeholder">CNIC Back</span>
+                <img src="" class="back-img" alt="CNIC Back">
+            </div>
+
+        </div>
+    </main>
+
+    <script>
+        function setupUploader(prefix) {
+            const zone = document.getElementById(`drop-${prefix}`);
+            const input = document.getElementById(`file-${prefix}`);
+            const clearBtn = document.getElementById(`clear-${prefix}`);
+            const controls = document.getElementById(`controls-${prefix}`);
+            const textSpan = zone.querySelector('.drop-text');
+            
+            const targets = document.querySelectorAll(`.${prefix}-img`);
+            const placeholders = document.querySelectorAll(`.${prefix}-placeholder`);
+            
+            // Sliders
+            const rotStd = document.getElementById(`${prefix}-rotate`);
+            const rotFine = document.getElementById(`${prefix}-fine-rotate`);
+            const zoomInp = document.getElementById(`${prefix}-zoom`);
+            const xInp = document.getElementById(`${prefix}-x`);
+            const yInp = document.getElementById(`${prefix}-y`);
+            const brightInp = document.getElementById(`${prefix}-bright`);
+            const contInp = document.getElementById(`${prefix}-contrast`);
+            const satInp = document.getElementById(`${prefix}-saturate`);
+
+            // Output Values
+            const rotStdVal = document.getElementById(`${prefix}-rotate-val`);
+            const rotFineVal = document.getElementById(`${prefix}-fine-rotate-val`);
+            const zoomVal = document.getElementById(`${prefix}-zoom-val`);
+            const xVal = document.getElementById(`${prefix}-x-val`);
+            const yVal = document.getElementById(`${prefix}-y-val`);
+            const brightVal = document.getElementById(`${prefix}-bright-val`);
+            const contVal = document.getElementById(`${prefix}-contrast-val`);
+            const satVal = document.getElementById(`${prefix}-saturate-val`);
+
+            function updateTransforms() {
+                const r1 = parseInt(rotStd.value);
+                const r2 = parseInt(rotFine.value);
+                const totalRotation = r1 + r2;
+
+                const z = zoomInp.value;
+                const x = xInp.value;
+                const y = yInp.value;
+                const b = brightInp.value;
+                const c = contInp.value;
+                const s = satInp.value;
+
+                rotStdVal.textContent = `${r1}°`;
+                rotFineVal.textContent = `${r2}°`;
+                zoomVal.textContent = `${z}x`;
+                xVal.textContent = `${x}px`;
+                yVal.textContent = `${y}px`;
+                brightVal.textContent = `${b}%`;
+                contVal.textContent = `${c}%`;
+                satVal.textContent = `${s}%`;
+                
+                targets.forEach(img => {
+                    img.style.transform = `translate(${x}px, ${y}px) rotate(${totalRotation}deg) scale(${z})`;
+                    img.style.filter = `brightness(${b}%) contrast(${c}%) saturate(${s}%)`;
+                });
+            }
+
+            // Attach listeners to all inputs
+            [rotStd, rotFine, zoomInp, xInp, yInp, brightInp, contInp, satInp].forEach(el => {
+                el.addEventListener('input', updateTransforms);
+            });
+
+            // Drag and Drop Logic
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(evt => {
+                zone.addEventListener(evt, e => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                }, false);
+            });
+
+            ['dragenter', 'dragover'].forEach(evt => {
+                zone.addEventListener(evt, () => zone.classList.add('dragover'), false);
+            });
+
+            ['dragleave', 'drop'].forEach(evt => {
+                zone.addEventListener(evt, () => zone.classList.remove('dragover'), false);
+            });
+
+            zone.addEventListener('drop', e => {
+                if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                    handleFile(e.dataTransfer.files[0]);
+                }
+            });
+
+            input.addEventListener('change', e => {
+                if (e.target.files && e.target.files.length > 0) {
+                    handleFile(e.target.files[0]);
+                }
+            });
+
+            clearBtn.addEventListener('click', () => {
+                input.value = '';
+                updateImages(null);
+                clearBtn.classList.add('hidden');
+                controls.classList.add('hidden');
+                textSpan.textContent = 'Click or drag image';
+                
+                // Reset inputs
+                rotStd.value = 0;
+                rotFine.value = 0;
+                zoomInp.value = 1;
+                xInp.value = 0;
+                yInp.value = 0;
+                brightInp.value = 100;
+                contInp.value = 100;
+                satInp.value = 100;
+                updateTransforms();
+            });
+
+            function handleFile(file) {
+                if (!file.type.startsWith('image/')) {
+                    alert('Please upload an image file.');
+                    return;
+                }
+                const reader = new FileReader();
+                reader.onload = e => {
+                    updateImages(e.target.result);
+                    clearBtn.classList.remove('hidden');
+                    controls.classList.remove('hidden');
+                    textSpan.textContent = file.name;
+                    updateTransforms(); 
+                }
+                reader.readAsDataURL(file);
+            }
+
+            function updateImages(src) {
+                targets.forEach(img => {
+                    if (src) {
+                        img.src = src;
+                        img.style.display = 'block';
+                    } else {
+                        img.src = '';
+                        img.style.display = 'none';
+                    }
+                });
+                placeholders.forEach(ph => {
+                    ph.style.display = src ? 'none' : 'block';
+                });
+            }
+        }
+
+        // Init
+        setupUploader('front');
+        setupUploader('back');
+
+        // Hide Blocks Toggle
+        document.getElementById('toggle-borders').addEventListener('change', function(e) {
+            if (e.target.checked) {
+                document.body.classList.add('hide-borders');
+            } else {
+                document.body.classList.remove('hide-borders');
+            }
+        });
+    </script>
+</body>
+</html>
