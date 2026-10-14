@@ -4,6 +4,9 @@ A lightweight, purely client-side web application designed to eliminate the hass
 
 For printers that lack auto-duplex (automatic double-sided printing), aligning the front and back of an ID card multiple times is tedious. This tool allows you to upload the front and back images once, automatically populates them into a 4-row grid, and lets you fine-tune the visuals before printing.
 
+<img width="1938" height="1269" alt="image" src="https://github.com/user-attachments/assets/9d52b773-5af9-4e8c-9a44-1e649d225f5f" />
+
+
 ## ✨ Features
 
 * **Drag & Drop Interface:** Easily load the front and back images of the card.
